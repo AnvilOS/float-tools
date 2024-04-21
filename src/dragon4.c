@@ -44,6 +44,7 @@ int dragon4(int e, uint64_t f, int p, int mode, int place)
     xint_print("M+", Mp);
 
     xint_t U = XINT_INIT_VAL;
+    int u;
     int low = 0;
     int high = 0;
     
@@ -54,6 +55,8 @@ int dragon4(int e, uint64_t f, int p, int mode, int place)
         xint_mul_1(R, R, 10);
         xint_div(U, R, R, S);
         
+        u = U->size ? U->data[0] : 0;
+
         xint_mul_1(Mm, Mm, 10);
         xint_mul_1(Mp, Mp, 10);
         
@@ -76,20 +79,20 @@ int dragon4(int e, uint64_t f, int p, int mode, int place)
         {
             break;
         }
-        printf("%d", U->data[0]);
+        printf("%d", u);
     }
     
     if (low && !high)
     {
-        printf("%d\n", U->data[0]);
+        printf("%d\n", u);
     }
     else if (!low && high)
     {
-        printf("%d\n", U->data[0]+1);
+        printf("%d\n", u+1);
     }
     else
     {
-        printf("%d\n", U->data[0]);
+        printf("%d\n", u);
     }
 
     return 0;

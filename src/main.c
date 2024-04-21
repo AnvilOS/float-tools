@@ -18,7 +18,12 @@ int main(int argc, const char * argv[])
     int e;
     int sign;
     
-    split_double(123.456, &sign, &f, &e);
+    union double_bits value;
+    value.bits = 0x44b52d02c7e14af6;
+    
+    printf("%.60e\n", value.dbl);
+
+    split_double(value.dbl, &sign, &f, &e);
     dragon4(e, f, 52, 0, 3);
     
     return 0;
