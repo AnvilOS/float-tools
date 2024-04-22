@@ -209,6 +209,8 @@
  *	used for input more than STRTOD_DIGLIM digits long (default 40).
  */
 
+#define IEEE_8087
+
 #ifndef Long
 #define Long int
 #endif

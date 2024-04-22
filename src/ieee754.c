@@ -14,6 +14,13 @@ double hex_to_double(uint64_t bits)
     return d.dbl;
 }
 
+uint64_t double_to_hex(double d)
+{
+    union double_bits db;
+    db.dbl = d;
+    return db.bits;
+}
+
 void split_double(double dd, int *sign, uint64_t *f, int *e)
 {
     union double_bits value;
