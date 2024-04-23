@@ -9,23 +9,21 @@
 
 #define MAX(a, b) (a>b?a:b)
 
-int fixup(xint_t R, xint_t S , xint_t Mp, xint_t Mm, int *k, uint64_t *f, int p, int mode, int *place);
+int fixup(xint_t R, xint_t S , xint_t Mp, xint_t Mm, int *k, uint64_t *f, int p, int mode, int *place, int *round_up, int even);
 
 char sstr[1000];
 
-int round_up = 0;
-int unequal;
-int even = 0;
-
 char *dragon4(int e, uint64_t f, int p, int mode, int place, int *pk)
 {
-    round_up = 0;
-    unequal = 0;
-    even = 0;
+    int round_up = 0;
+    int even = 0;
 
     if ((f % 2) == 0)
     {
-        even = 1;
+        if (mode == 0)
+        {
+            even = 1;
+        }
     }
 
     if (f == 0)
@@ -52,7 +50,7 @@ char *dragon4(int e, uint64_t f, int p, int mode, int place, int *pk)
     xint_lshift(Mm, Mm, MAX(e-p, 0));
     xint_copy(Mp, Mm);
  
-    fixup(R, S, Mp, Mm, &k, &f, p, mode, &place);
+    fixup(R, S, Mp, Mm, &k, &f, p, mode, &place, &round_up, even);
     
     xint_t U = XINT_INIT_VAL;
     int u;
@@ -150,18 +148,13 @@ char *dragon4(int e, uint64_t f, int p, int mode, int place, int *pk)
     return sstr;
 }
 
-int fixup(xint_t R, xint_t S , xint_t Mp, xint_t Mm, int *k, uint64_t *f, int p, int mode, int *place)
+int fixup(xint_t R, xint_t S , xint_t Mp, xint_t Mm, int *k, uint64_t *f, int p, int mode, int *place, int *round_up, int even)
 {
     if (*f == 0x10000000000000ULL)
     {
-        unequal = 1;
         xint_lshift(Mp, Mp, 1);
         xint_lshift(R, R, 1);
         xint_lshift(S, S, 1);
-    }
-    else
-    {
-        unequal = 0;
     }
     *k = 0;
     
@@ -187,7 +180,7 @@ int fixup(xint_t R, xint_t S , xint_t Mp, xint_t Mm, int *k, uint64_t *f, int p,
         xint_mul_1(tmp, R, 2);
         xint_adda(tmp, tmp, Mp);
         xint_lshift(S, S, 1);
-        while (round_up || even ? xint_cmp(tmp, S) >= 0 : xint_cmp(tmp, S) > 0)
+        while (*round_up || even ? xint_cmp(tmp, S) >= 0 : xint_cmp(tmp, S) > 0)
         //while (xint_cmp(tmp, S) >= 0)
         {
             xint_mul_1(S, S, 10);
@@ -203,7 +196,7 @@ int fixup(xint_t R, xint_t S , xint_t Mp, xint_t Mm, int *k, uint64_t *f, int p,
         xint_mul_1(tmp, R, 2);
         xint_adda(tmp, tmp, Mp);
         xint_lshift(S, S, 1);
-        if (!(round_up || even ? xint_cmp(tmp, S) >= 0 : xint_cmp(tmp, S) > 0))
+        if (!(*round_up || even ? xint_cmp(tmp, S) >= 0 : xint_cmp(tmp, S) > 0))
         //if (!(xint_cmp(tmp, S) >= 0))
         {
             xint_rshift(S, S, 1);
