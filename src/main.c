@@ -32,9 +32,9 @@ int cmp_dragon4_w_dtoa(double d)
     if ((decpt1 != decpt2) || strcmp(pstr1, pstr2))
     {
         printf("Mismatch between dtoa mode 0 and Dragon4\n");
-        printf("%.30e\n", d);
-        printf("0x%016llx\n", double_to_hex(d));
-        printf("%s %d\n", pstr1, decpt1);
+        printf("%.30e ", d);
+        printf("0x%016llx ", double_to_hex(d));
+        printf("%s %d ", pstr1, decpt1);
         printf("%s %d\n", pstr2, decpt2);
         printf("NG\n\n");
         return -1;
@@ -53,8 +53,11 @@ int run_all_test_cases(int (*f)(double))
         { "3rd_party/1e23_problem", 1 },
         NULL,
     };
-    int err_cnt = 0;
-    
+    int file_err = 0;
+    int file_cnt = 0;
+    int total_err = 0;
+    int total_cnt = 0;
+
     const struct file_list *curr_file = &file_list[0];
     while (curr_file->name)
     {
@@ -112,6 +115,7 @@ int run_all_test_cases(int (*f)(double))
             }
             else
             {
+                printf("Bad file format\n");
                 continue;
             }
             if ((nn & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL)
@@ -120,12 +124,17 @@ int run_all_test_cases(int (*f)(double))
             }
             if (f(hex_to_double(nn)) == -1)
             {
-                ++err_cnt;
+                ++file_err;
+                ++total_err;
             }
+            ++file_cnt;
+            ++total_cnt;
         }
-        printf("%d errors\n", err_cnt);
+        printf("%d/%d errors in file\n", file_err, file_cnt);
+        file_err = 0;
+        file_cnt = 0;
         ++curr_file;
     }
-    printf("*** %d errors ***\n", err_cnt);
+    printf("*** %d/%d errors ***\n", total_err, total_cnt);
     return 0;
 }
