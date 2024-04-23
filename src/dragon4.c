@@ -14,13 +14,20 @@ int fixup(xint_t R, xint_t S , xint_t Mp, xint_t Mm, int *k, uint64_t *f, int p,
 char sstr[1000];
 
 int round_up = 0;
+int unequal;
+int even = 0;
 
 char *dragon4(int e, uint64_t f, int p, int mode, int place, int *pk)
 {
-    if (f & 1)
+    round_up = 0;
+    unequal = 0;
+    even = 0;
+
+    if ((f % 2) == 0)
     {
-        round_up = 1;
+        even = 1;
     }
+
     if (f == 0)
     {
         *pk = 1;
@@ -44,7 +51,7 @@ char *dragon4(int e, uint64_t f, int p, int mode, int place, int *pk)
     xint_lshift(S, S, MAX(0, -(e-p)));
     xint_lshift(Mm, Mm, MAX(e-p, 0));
     xint_copy(Mp, Mm);
-
+ 
     fixup(R, S, Mp, Mm, &k, &f, p, mode, &place);
     
     xint_t U = XINT_INIT_VAL;
@@ -69,12 +76,17 @@ char *dragon4(int e, uint64_t f, int p, int mode, int place, int *pk)
         
         // low = 2R < Mm
         xint_lshift(T2R, R, 1);
-        low = xint_cmp(T2R, Mm) < 0;
+        low = round_up || even ? xint_cmp(T2R, Mm) <= 0 : xint_cmp(T2R, Mm) < 0;
         
         xint_lshift(T2S, S, 1);
         xint_adda(T2R, T2R, Mp);
         // Compare 2R with 2S - Mp
-        if (round_up)
+
+        if (xint_is_zero(R))
+        {
+            break;
+        }
+        if (round_up || even)
         {
             high = xint_cmp(T2R, T2S) >= 0;
         }
@@ -99,34 +111,60 @@ char *dragon4(int e, uint64_t f, int p, int mode, int place, int *pk)
     }
     else
     {
-        // Scale R up by 2
         xint_lshift(R, R, 1);
         int cmp = xint_cmp(R, S);
-        if (cmp <= 0 || (cmp == 0 && round_up))
+        if (cmp < 0)
         {
             *pstr++ = u;
         }
-        else
+        else if (cmp > 0)
         {
             *pstr++ = u + 1;
         }
+        else
+        {
+            if (u & 1 /*|| unequal*/)
+            {
+                *pstr++ = u + 1;
+            }
+            else
+            {
+                *pstr++ = u;
+            }
+        }
     }
-
     *pstr = 0;
+    --pstr;
+    // Remove trailing zeroes
+    while (pstr > sstr)
+    {
+        if (*pstr != '0')
+        {
+            break;
+        }
+        ++k;
+        *pstr = 0;
+        --pstr;
+    }
     *pk = k + (int)strlen(sstr);
     return sstr;
 }
 
 int fixup(xint_t R, xint_t S , xint_t Mp, xint_t Mm, int *k, uint64_t *f, int p, int mode, int *place)
 {
-    if (*f == (1 << (p - 1)))
+    if (*f == 0x10000000000000ULL)
     {
+        unequal = 1;
         xint_lshift(Mp, Mp, 1);
         xint_lshift(R, R, 1);
         xint_lshift(S, S, 1);
     }
+    else
+    {
+        unequal = 0;
+    }
     *k = 0;
-
+    
     xint_t ceil_s_div_10 = XINT_INIT_VAL;
     xint_copy(ceil_s_div_10, S);
     xword_t rem;
@@ -135,7 +173,7 @@ int fixup(xint_t R, xint_t S , xint_t Mp, xint_t Mm, int *k, uint64_t *f, int p,
     {
         xint_adda_1(ceil_s_div_10, ceil_s_div_10, 1);
     }
-    while (round_up ? xint_cmp(R, ceil_s_div_10) <= 0 : xint_cmp(R, ceil_s_div_10) < 0)
+    while (xint_cmp(R, ceil_s_div_10) < 0)
     {
         *k = *k - 1;
         xint_mul_1(R, R, 10);
@@ -149,7 +187,8 @@ int fixup(xint_t R, xint_t S , xint_t Mp, xint_t Mm, int *k, uint64_t *f, int p,
         xint_mul_1(tmp, R, 2);
         xint_adda(tmp, tmp, Mp);
         xint_lshift(S, S, 1);
-        while (xint_cmp(tmp, S) >= 0)
+        while (round_up || even ? xint_cmp(tmp, S) >= 0 : xint_cmp(tmp, S) > 0)
+        //while (xint_cmp(tmp, S) >= 0)
         {
             xint_mul_1(S, S, 10);
             *k = *k + 1;
@@ -164,7 +203,8 @@ int fixup(xint_t R, xint_t S , xint_t Mp, xint_t Mm, int *k, uint64_t *f, int p,
         xint_mul_1(tmp, R, 2);
         xint_adda(tmp, tmp, Mp);
         xint_lshift(S, S, 1);
-        if (!(xint_cmp(tmp, S) >= 0))
+        if (!(round_up || even ? xint_cmp(tmp, S) >= 0 : xint_cmp(tmp, S) > 0))
+        //if (!(xint_cmp(tmp, S) >= 0))
         {
             xint_rshift(S, S, 1);
             break;
