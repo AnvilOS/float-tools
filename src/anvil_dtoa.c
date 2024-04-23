@@ -16,13 +16,13 @@ char *anvil_dtoa(double dd, int mode, int ndigits, int *decpt, int *sign, char *
     
     split_double(dd, sign, &f, &e);
     
-    xint_t R = XINT_INIT_VAL;
-    xint_t S = XINT_INIT_VAL;
+    xint_t x2R = XINT_INIT_VAL;
+    xint_t x2S = XINT_INIT_VAL;
     xint_t Mm = XINT_INIT_VAL;
     xint_t Mp = XINT_INIT_VAL;
-    xint_t T2S = XINT_INIT_VAL;
-    xint_t T2R = XINT_INIT_VAL;
-    
+    xint_t U = XINT_INIT_VAL;
+    xint_t TMP = XINT_INIT_VAL;
+
     int round_up = 0;
     int even = 0;
     
@@ -39,79 +39,73 @@ char *anvil_dtoa(double dd, int mode, int ndigits, int *decpt, int *sign, char *
         *decpt = 1;
         return strdup("0");
     }
-    xint_assign_uint64(R, f);
-    xint_assign_uint64(S, 1);
+    xint_assign_uint64(x2R, f);
+    xint_assign_uint64(x2S, 1);
     xint_assign_uint64(Mm, 1);
     xint_assign_uint64(Mp, 1);
     
     int k = 0;
     
-    xint_lshift(R, R, MAX(e-p, 0));
-    xint_lshift(S, S, MAX(0, -(e-p)));
+    xint_lshift(x2R, x2R, MAX(e-p, 0));
+    xint_lshift(x2S, x2S, MAX(0, -(e-p)));
     xint_lshift(Mm, Mm, MAX(e-p, 0));
     xint_copy(Mp, Mm);
     
     //    fixup(R, S, Mp, Mm, &k, &f, p, mode, &place, &round_up, even);
+    if (f == 0x10000000000000ULL)
     {
-        xint_t TMP = XINT_INIT_VAL;
-        
-        if (f == 0x10000000000000ULL)
-        {
-            xint_lshift(Mp, Mp, 1);
-            xint_lshift(R, R, 1);
-            xint_lshift(S, S, 1);
-        }
-        k = 0;
-        
-        // Load TMP with ceil(S/10)
-        xint_copy(TMP, S);
-        xword_t rem;
-        xint_div_1(TMP, &rem, TMP, 10);
-        if (rem)
-        {
-            xint_adda_1(TMP, TMP, 1);
-        }
-        while (xint_cmp(R, TMP) < 0)
-        {
-            k = k - 1;
-            xint_mul_1(R, R, 10);
-            xint_mul_1(Mm, Mm, 10);
-            xint_mul_1(Mp, Mp, 10);
-        }
-        
-        // This time TMP will be 2R + M+ and we will load 2S into S
-        while (1)
-        {
-            xint_mul_1(TMP, R, 2);
-            xint_adda(TMP, TMP, Mp);
-            xint_lshift(S, S, 1);
-            while (round_up || even ? xint_cmp(TMP, S) >= 0 : xint_cmp(TMP, S) > 0)
-            {
-                xint_mul_1(S, S, 10);
-                k = k + 1;
-            }
-            xint_rshift(S, S, 1);
-            // Adjust Mp and Mm
-            switch (mode)
-            {
-                default:
-                    *decpt = k;
-            }
-            xint_mul_1(TMP, R, 2);
-            xint_adda(TMP, TMP, Mp);
-            xint_lshift(S, S, 1);
-            if (!(round_up || even ? xint_cmp(TMP, S) >= 0 : xint_cmp(TMP, S) > 0))
-            {
-                xint_rshift(S, S, 1);
-                break;
-            }
-            xint_rshift(S, S, 1);
-        }
-        xint_delete(TMP);
-        //return 0;
+        xint_lshift(Mp, Mp, 1);
+        xint_lshift(x2R, x2R, 1);
+        xint_lshift(x2S, x2S, 1);
+    }
+    k = 0;
+
+    // From now on we will keep 2xr and 2xS for convenience
+    xint_lshift(x2S, x2S, 1);
+    xint_lshift(x2R, x2R, 1);
+
+    // Load TMP with ceil(S/10)
+    xint_copy(TMP, x2S);
+    xword_t rem;
+    xint_div_1(TMP, &rem, TMP, 10);
+    if (rem)
+    {
+        xint_adda_1(TMP, TMP, 1);
+    }
+    // while R < ceil(S/10) - actually 2xR < ceil(2xS/10)
+    while (xint_cmp(x2R, TMP) < 0)
+    {
+        k = k - 1;
+        xint_mul_1(x2R, x2R, 10);
+        xint_mul_1(Mm, Mm, 10);
+        xint_mul_1(Mp, Mp, 10);
     }
 
-    xint_t U = XINT_INIT_VAL;
+    // This time TMP will be 2xR + M+
+    while (1)
+    {
+        xint_adda(TMP, x2R, Mp);
+        // while 2xR + M+ >= 2S
+        while (round_up || even ? xint_cmp(TMP, x2S) >= 0 : xint_cmp(TMP, x2S) > 0)
+        {
+            xint_mul_1(x2S, x2S, 10);
+            k = k + 1;
+        }
+        // Adjust Mp and Mm
+        switch (mode)
+        {
+            default:
+                *decpt = k;
+        }
+
+        xint_adda(TMP, x2R, Mp);
+        // if 2xR + M+ >= 2S
+        if (!(round_up || even ? xint_cmp(TMP, x2S) >= 0 : xint_cmp(TMP, x2S) > 0))
+        {
+            break;
+        }
+    }
+
     int u;
     int low = 0;
     int high = 0;
@@ -125,9 +119,9 @@ char *anvil_dtoa(double dd, int mode, int ndigits, int *decpt, int *sign, char *
     {
         k = k - 1;
 
-        xint_mul_1(R, R, 10);
-        xint_div(U, R, R, S);
-        
+        xint_mul_1(x2R, x2R, 10);
+        xint_div(U, x2R, x2R, x2S);
+
         u = U->size ? U->data[0] : 0;
         u += '0';
 
@@ -135,20 +129,17 @@ char *anvil_dtoa(double dd, int mode, int ndigits, int *decpt, int *sign, char *
         xint_mul_1(Mp, Mp, 10);
         
         // low = 2R < Mm
-        xint_lshift(T2R, R, 1);
-        low = round_up || even ? xint_cmp(T2R, Mm) <= 0 : xint_cmp(T2R, Mm) < 0;
+        low = round_up || even ? xint_cmp(x2R, Mm) <= 0 : xint_cmp(x2R, Mm) < 0;
         
-        xint_lshift(T2S, S, 1);
-        xint_adda(T2R, T2R, Mp);
+        xint_adda(TMP, x2R, Mp);
         // Compare 2R with 2S - Mp
-
         if (round_up || even)
         {
-            high = xint_cmp(T2R, T2S) >= 0;
+            high = xint_cmp(TMP, x2S) >= 0;
         }
         else
         {
-            high = xint_cmp(T2R, T2S) > 0;
+            high = xint_cmp(TMP, x2S) > 0;
         }
         if (low || high /*|| k == ndigits*/)
         {
@@ -167,8 +158,8 @@ char *anvil_dtoa(double dd, int mode, int ndigits, int *decpt, int *sign, char *
     }
     else
     {
-        xint_lshift(R, R, 1);
-        int cmp = xint_cmp(R, S);
+        xint_lshift(x2R, x2R, 1);
+        int cmp = xint_cmp(x2R, x2S);
         if (cmp < 0)
         {
             *pstr++ = u;
@@ -205,14 +196,12 @@ char *anvil_dtoa(double dd, int mode, int ndigits, int *decpt, int *sign, char *
   
     *decpt = k + (int)strlen(sstr);
 
-    xint_delete(R);
-    xint_delete(S);
+    xint_delete(x2R);
+    xint_delete(x2S);
     xint_delete(Mm);
     xint_delete(Mp);
-    xint_delete(T2S);
-    xint_delete(T2R);
+    xint_delete(U);
+    xint_delete(TMP);
 
     return sstr;
-
-    return NULL;
 }
