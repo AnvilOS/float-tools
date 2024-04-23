@@ -8,14 +8,24 @@
 
 #define MAX(a, b) (a>b?a:b)
 
+static char *dragon4(uint64_t f, int e, int p, int mode, int ndigits, int *decpt);
+
 char *anvil_dtoa(double dd, int mode, int ndigits, int *decpt, int *sign, char **rve)
 {
     const int p = 52;
     uint64_t f;
     int e;
-    
     split_double(dd, sign, &f, &e);
-    
+    return dragon4(f, e, p, mode, ndigits, decpt);
+}
+
+char *anvil_ldtoa(long double dd, int mode, int ndigits, int *decpt, int *sign, char **rve)
+{
+    return NULL;
+}
+
+static char *dragon4(uint64_t f, int e, int p, int mode, int cutoff_place, int *decpt)
+{
     xint_t x2R = XINT_INIT_VAL;
     xint_t x2S = XINT_INIT_VAL;
     xint_t Mm = XINT_INIT_VAL;
@@ -64,7 +74,7 @@ char *anvil_dtoa(double dd, int mode, int ndigits, int *decpt, int *sign, char *
     xint_lshift(x2S, x2S, 1);
     xint_lshift(x2R, x2R, 1);
 
-    // Load TMP with ceil(S/10)
+    // Load TMP with ceil(S/10) - actually ceil(2xS/10)
     xint_copy(TMP, x2S);
     xword_t rem;
     xint_div_1(TMP, &rem, TMP, 10);
@@ -94,10 +104,16 @@ char *anvil_dtoa(double dd, int mode, int ndigits, int *decpt, int *sign, char *
         // Adjust Mp and Mm
         switch (mode)
         {
+            case 0:
+            case 1:
+                cutoff_place = k;
+                break;
+
             default:
-                *decpt = k;
+                break;
         }
 
+        // We need to do this again in case M+ changed
         xint_adda(TMP, x2R, Mp);
         // if 2xR + M+ >= 2S
         if (!(round_up || even ? xint_cmp(TMP, x2S) >= 0 : xint_cmp(TMP, x2S) > 0))
@@ -132,7 +148,7 @@ char *anvil_dtoa(double dd, int mode, int ndigits, int *decpt, int *sign, char *
         low = round_up || even ? xint_cmp(x2R, Mm) <= 0 : xint_cmp(x2R, Mm) < 0;
         
         xint_adda(TMP, x2R, Mp);
-        // Compare 2R with 2S - Mp
+        // Compare 2R with 2S - Mp (actually compare 2xR + M+ with 2xS
         if (round_up || even)
         {
             high = xint_cmp(TMP, x2S) >= 0;
@@ -141,7 +157,7 @@ char *anvil_dtoa(double dd, int mode, int ndigits, int *decpt, int *sign, char *
         {
             high = xint_cmp(TMP, x2S) > 0;
         }
-        if (low || high /*|| k == ndigits*/)
+        if (low || high || k == cutoff_place)
         {
             break;
         }
@@ -158,6 +174,7 @@ char *anvil_dtoa(double dd, int mode, int ndigits, int *decpt, int *sign, char *
     }
     else
     {
+        // Compare 2xR with S - in our case 4xR with 2xS
         xint_lshift(x2R, x2R, 1);
         int cmp = xint_cmp(x2R, x2S);
         if (cmp < 0)
