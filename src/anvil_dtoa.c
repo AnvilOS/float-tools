@@ -2,6 +2,7 @@
 #include "anvil_dtoa.h"
 #include "ieee754.h"
 #include "xint.h"
+#include "pow5.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -50,23 +51,10 @@ static char *dragon4(uint64_t f, int e, int p, int mode, int cutoff_place, int *
         return strdup("0");
     }
     
-    dragon4_init(f, e, p, x2R, x2S, Mm, Mp, TMP);
+    int k = dragon4_init(f, e, p, x2R, x2S, Mm, Mp, TMP);
     
-    int k = 0;
+    // This is the fixup procedure, in line
     
-    // fixup(R, S, Mp, Mm, &k, &f, p, mode, &place, &round_up, even);
-    if (f == 0x10000000000000ULL)
-    {
-        xint_lshift(Mp, Mp, 1);
-        xint_lshift(x2R, x2R, 1);
-        xint_lshift(x2S, x2S, 1);
-    }
-    k = 0;
-
-    // From now on we will keep 2xr and 2xS for convenience
-    xint_lshift(x2S, x2S, 1);
-    xint_lshift(x2R, x2R, 1);
-
     // Load TMP with ceil(S/10) - actually ceil(2xS/10)
     xint_copy(TMP, x2S);
     xword_t rem;
@@ -217,21 +205,120 @@ static char *dragon4(uint64_t f, int e, int p, int mode, int cutoff_place, int *
 
 int dragon4_init(uint64_t f, int e, int p, xint_t x2R, xint_t x2S, xint_t Mm, xint_t Mp, xint_t TMP)
 {
-    xint_init(x2R, 20);
-    xint_init(x2S, 20);
-    xint_init(Mm, 20);
-    xint_init(Mp, 20);
-    xint_init(TMP, 20);
+    int k = 0;
+    
+    // INITIALISE THE VARIABLES
+    // R = f << max(e-p, 0)
+    // S = 1 << max(0, -(e-p))
+    // M+ = 1 << max(e-p, 0)
+    // M- = 1 << max(e-p, 0)
+    //
+    // Instead of doing the calcs now just record what will be done. We'll
+    // do all the calcs at the end
+    int r2e = 0;
+    int s2e = 0;
+    int r5e = 0;
+    int s5e = 0;
+    if (e - p >= 0)
+    {
+        r2e = e - p;
+    }
+    else
+    {
+        s2e = p - e;
+    }
+    
+    // To save time running the 2 while loops on R and S at the start
+    // of Dragon4 we pre-multiply S by the log of the double to be
+    // printed
+    //            d = f x 2^e
+    //     log10(d) = log10(f x 2^e)
+    //              = e x log10(2f)    note that 1 <= f < 2
+    //              < 0.30103 x e
+    //
+    // We want an underestimate so take the floor
+    //
+    //      est_log = floor(e x 30103 / 100000)
+    //
+    // Don't forget denormals...
+    uint64_t mask = 1ULL << p;
+    int e_norm = e;
+    while ((f & mask) == 0)
+    {
+        mask >>= 1;
+        --e_norm;
+    }
+    int est_log = (e_norm * 30103 / 100000);
+    if (est_log <= 0)
+    {
+        --est_log;
+    }
+    
+    xint_init(x2R, 27);
+    xint_init(x2S, 27);
+    xint_init(Mm, 27);
+    xint_init(Mp, 27);
+    xint_init(TMP, 27);
 
     xint_assign_uint64(x2R, f);
     xint_assign_uint64(x2S, 1);
     xint_assign_uint64(Mm, 1);
     xint_assign_uint64(Mp, 1);
+    
+    if (est_log < 0)
+    {
+        r2e += -est_log;
+        r5e += -est_log;
+    }
+    else
+    {
+        s2e += est_log;
+        s5e += est_log;
+    }
+    
+    // Remove common factors now
+    if (r2e < s2e)
+    {
+        s2e -= r2e;
+        r2e = 0;
+    }
+    else
+    {
+        r2e -= s2e;
+        s2e = 0;
+    }
+    if (r5e < s5e)
+    {
+        s5e -= r5e;
+        r5e = 0;
+    }
+    else
+    {
+        r5e -= s5e;
+        s5e = 0;
+    }
 
-    xint_lshift(x2R, x2R, MAX(e-p, 0));
-    xint_lshift(x2S, x2S, MAX(0, -(e-p)));
-    xint_lshift(Mm, Mm, MAX(e-p, 0));
+    // From now on we will keep 2xR and 2xS for convenience so add one to each
+    xint_lshift(x2R, x2R, r2e + 1);
+    xint_mul_5exp(x2R, r5e);
+
+    xint_lshift(x2S, x2S, s2e + 1);
+    xint_mul_5exp(x2S, s5e);
+
+    // M+ and M- are scaled with R
+    xint_lshift(Mm, Mm, r2e);
+    xint_mul_5exp(Mm, r5e);
     xint_copy(Mp, Mm);
 
-    return 0;
+    // Account for unequal gaps
+    if (f == 1ULL << p)
+    {
+        xint_lshift(Mp, Mp, 1);
+        xint_lshift(x2R, x2R, 1);
+        xint_lshift(x2S, x2S, 1);
+    }
+
+    k = est_log;
+
+    return k;
 }
