@@ -7,6 +7,12 @@ union double_bits
     uint64_t bits;
 };
 
+union long_double_bits
+{
+    long double dbl;
+    uint64_t bits[2];
+};
+
 double hex_to_double(uint64_t bits)
 {
     union double_bits d;
@@ -35,5 +41,18 @@ void split_double(double dd, int *sign, uint64_t *f, int *e)
     else
     {
         *f |= 0x10000000000000;
+    }
+}
+
+void split_long_double(long double dd, int *sign, uint64_t *f, int *e)
+{
+    union long_double_bits value;
+    value.dbl = dd;
+    *sign = (value.bits[1] >> 15) & 1;
+    *e = (value.bits[1] & 0x7fff) - 16383;
+    *f = value.bits[0];
+    if (*e == -16383)
+    {
+        ++*e;
     }
 }

@@ -9,6 +9,7 @@
 #define MAX(a, b) (a>b?a:b)
 
 static char *dragon4(uint64_t f, int e, int p, int mode, int ndigits, int *decpt);
+static int dragon4_init(uint64_t f, int e, int p, xint_t x2R, xint_t x2S, xint_t Mm, xint_t Mp, xint_t TMP);
 
 char *anvil_dtoa(double dd, int mode, int ndigits, int *decpt, int *sign, char **rve)
 {
@@ -21,17 +22,16 @@ char *anvil_dtoa(double dd, int mode, int ndigits, int *decpt, int *sign, char *
 
 char *anvil_ldtoa(long double dd, int mode, int ndigits, int *decpt, int *sign, char **rve)
 {
-    return NULL;
+    const int p = 63;
+    uint64_t f;
+    int e;
+    split_long_double(dd, sign, &f, &e);
+    return dragon4(f, e, p, mode, ndigits, decpt);
 }
 
 static char *dragon4(uint64_t f, int e, int p, int mode, int cutoff_place, int *decpt)
 {
-    xint_t x2R = XINT_INIT_VAL;
-    xint_t x2S = XINT_INIT_VAL;
-    xint_t Mm = XINT_INIT_VAL;
-    xint_t Mp = XINT_INIT_VAL;
-    xint_t U = XINT_INIT_VAL;
-    xint_t TMP = XINT_INIT_VAL;
+    xint_t x2R, x2S, Mm, Mp, TMP;
 
     int round_up = 0;
     int even = 0;
@@ -49,19 +49,12 @@ static char *dragon4(uint64_t f, int e, int p, int mode, int cutoff_place, int *
         *decpt = 1;
         return strdup("0");
     }
-    xint_assign_uint64(x2R, f);
-    xint_assign_uint64(x2S, 1);
-    xint_assign_uint64(Mm, 1);
-    xint_assign_uint64(Mp, 1);
+    
+    dragon4_init(f, e, p, x2R, x2S, Mm, Mp, TMP);
     
     int k = 0;
     
-    xint_lshift(x2R, x2R, MAX(e-p, 0));
-    xint_lshift(x2S, x2S, MAX(0, -(e-p)));
-    xint_lshift(Mm, Mm, MAX(e-p, 0));
-    xint_copy(Mp, Mm);
-    
-    //    fixup(R, S, Mp, Mm, &k, &f, p, mode, &place, &round_up, even);
+    // fixup(R, S, Mp, Mm, &k, &f, p, mode, &place, &round_up, even);
     if (f == 0x10000000000000ULL)
     {
         xint_lshift(Mp, Mp, 1);
@@ -83,7 +76,7 @@ static char *dragon4(uint64_t f, int e, int p, int mode, int cutoff_place, int *
         xint_adda_1(TMP, TMP, 1);
     }
     // while R < ceil(S/10) - actually 2xR < ceil(2xS/10)
-    while (xint_cmp(x2R, TMP) < 0)
+    while (xint_cmp(x2R, x2S) < 0)
     {
         k = k - 1;
         xint_mul_1(x2R, x2R, 10);
@@ -136,9 +129,9 @@ static char *dragon4(uint64_t f, int e, int p, int mode, int cutoff_place, int *
         k = k - 1;
 
         xint_mul_1(x2R, x2R, 10);
-        xint_div(U, x2R, x2R, x2S);
-
-        u = U->size ? U->data[0] : 0;
+        
+        xint_div(TMP, x2R, x2R, x2S);
+        u = TMP->size ? TMP->data[0] : 0;
         u += '0';
 
         xint_mul_1(Mm, Mm, 10);
@@ -217,8 +210,28 @@ static char *dragon4(uint64_t f, int e, int p, int mode, int cutoff_place, int *
     xint_delete(x2S);
     xint_delete(Mm);
     xint_delete(Mp);
-    xint_delete(U);
     xint_delete(TMP);
 
     return sstr;
+}
+
+int dragon4_init(uint64_t f, int e, int p, xint_t x2R, xint_t x2S, xint_t Mm, xint_t Mp, xint_t TMP)
+{
+    xint_init(x2R, 20);
+    xint_init(x2S, 20);
+    xint_init(Mm, 20);
+    xint_init(Mp, 20);
+    xint_init(TMP, 20);
+
+    xint_assign_uint64(x2R, f);
+    xint_assign_uint64(x2S, 1);
+    xint_assign_uint64(Mm, 1);
+    xint_assign_uint64(Mp, 1);
+
+    xint_lshift(x2R, x2R, MAX(e-p, 0));
+    xint_lshift(x2S, x2S, MAX(0, -(e-p)));
+    xint_lshift(Mm, Mm, MAX(e-p, 0));
+    xint_copy(Mp, Mm);
+
+    return 0;
 }
