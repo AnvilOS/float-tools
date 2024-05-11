@@ -1,23 +1,18 @@
 
 #include "ieee754.h"
 
-union double_bits
-{
-    double dbl;
-    uint64_t bits;
-};
-
-union long_double_bits
-{
-    long double dbl;
-    uint64_t bits[2];
-};
-
 double hex_to_double(uint64_t bits)
 {
     union double_bits d;
     d.bits = bits;
     return d.dbl;
+}
+
+double hex_to_float(uint32_t bits)
+{
+    union float_bits f;
+    f.bits = bits;
+    return f.flt;
 }
 
 uint64_t double_to_hex(double d)
