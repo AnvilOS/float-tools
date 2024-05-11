@@ -10,6 +10,7 @@
 #define MAX(a, b) (a>b?a:b)
 
 int fixup(xint_t R, xint_t S , xint_t Mp, xint_t Mm, int *k, uint64_t *f, int p, int mode, int *place, int *round_up, int even);
+int cutoff_adjust(xint_t S, xint_t Mm, xint_t Mp, int place, int k);
 
 char sstr[1000];
 
@@ -66,7 +67,7 @@ char *dragon4(int e, uint64_t f, int p, int mode, int place, int *pk)
         xint_mul_1(R, R, 10);
         xint_div(U, R, R, S);
         
-        u = U->size ? U->data[0] : 0;
+        u = xint_size(U) ? U->data[0] : 0;
         u += '0';
 
         xint_mul_1(Mm, Mm, 10);
@@ -210,5 +211,51 @@ int fixup(xint_t R, xint_t S , xint_t Mp, xint_t Mm, int *k, uint64_t *f, int p,
         xint_rshift(S, S, 1);
     }
     xint_delete(TMP);
+    return 0;
+}
+
+int cutoff_adjust(xint_t S, xint_t Mm, xint_t Mp, int place, int k)
+{
+    int a = place - k;
+    
+    xint_t y = XINT_INIT_VAL;
+    xint_copy(y, S);
+    
+    if (a >= 0)
+    {
+        for (int j=0; j<a; ++j)
+        {
+            xint_mul_1(y, y, 10);
+        }
+    }
+    if (a <= 0)
+    {
+        for (int j=0; j<a; ++j)
+        {
+            //int xint_div_1(xint_t q, xword_t *r, const xint_t u, uint32_t v)
+            xword_t r;
+            xint_div_1(y, &r, y, 10);
+            if (r)
+            {
+                xint_adda_1(y, y, 1);
+            }
+        }
+    }
+    // assert y = ceil(10^a)
+    int cmp = xint_cmp(y, Mm);
+    if (cmp > 0)
+    {
+        xint_copy(Mm, y);
+    }
+    cmp = xint_cmp(y, Mp);
+    if (cmp > 0)
+    {
+        xint_copy(Mp, y);
+    }
+    if (xint_cmp(Mp, y) == 0)
+    {
+        // roundup_flag
+        return 1;
+    }
     return 0;
 }
