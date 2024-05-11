@@ -91,11 +91,16 @@ const xint_t big_pow_5[] =
 
 uint32_t xint_mul_5exp(xint_t x, int e)
 {
-    if (x->size == 0)
+    if (xint_size(x) == 0)
     {
         return 0;
     }
-
+    
+    if (e == 0)
+    {
+        return 0;
+    }
+    
     int lll = e & 0x1f;
     if (lll < 28)
     {
@@ -106,7 +111,7 @@ uint32_t xint_mul_5exp(xint_t x, int e)
         }
         else
         {
-            xint_mul_2(x, med_pow_5[lll - 14]);
+            xint_mul_2(x, x, med_pow_5[lll - 14]);
             e &= ~lll;
         }
     }
@@ -118,7 +123,7 @@ uint32_t xint_mul_5exp(xint_t x, int e)
         lll = e & 0x1f;
         if (lll < 28)
         {
-            xint_mul_2(x, med_pow_5[lll - 14]);
+            xint_mul_2(x, x, med_pow_5[lll - 14]);
             e &= ~lll;
         }
     }
