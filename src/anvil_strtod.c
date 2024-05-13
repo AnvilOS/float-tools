@@ -4,6 +4,8 @@
 #include <strings.h>
 
 #include "ieee754.h"
+#include "xint.h"
+#include "pow5.h"
 
 static const int n = 53;
 static const int p = 64;
@@ -15,6 +17,8 @@ static const int MAX_DIG = 19;
 
 enum pfp_res parse_fp_num(const char *restrict nptr, char **restrict endptr, struct _Anvil_float *estimate_s);
 static int algoritm_r(uint64_t significand, const char *pnum, int total_dig, int e, struct _Anvil_float *z0);
+static int prev_float(struct _Anvil_float *z);
+static int next_float(struct _Anvil_float *z);
 
 #define LONGEST_DOUBLE long double
 
@@ -73,7 +77,7 @@ double _Anvil_strtod(const char *restrict nptr, char **restrict endptr)
                 return result.neg ? -(result.mant / dbl_pos_exp[-result.exp]) : result.mant / dbl_pos_exp[-result.exp];
             }
         case PFP_DEC:
-            ret.bits = result.mant;
+            ret.bits = result.mant & 0xfffffffffffff;
             ret.bits |= (uint64_t)result.exp << 52;
             return result.neg ? -ret.dbl : ret.dbl;
     }
@@ -348,20 +352,259 @@ enum pfp_res parse_fp_num(const char *restrict nptr, char **restrict endptr, str
             }
         }
     }
+    
+    long_double_to_struct(result, estimate);
 
-    union double_bits dd;
-    dd.dbl = estimate;
-    result->exp = (dd.bits >> 52) & 0x7ff;
-    result->mant = dd.bits & 0xfffffffffffff;
+    algoritm_r(significand, pnum, ndig_b + ndig_a, full_exponent, result);
 
-    if (dd.dbl == 0.0)
+    return PFP_DEC;
+}
+
+int algoritm_r(uint64_t significand, const char *pnum, int total_dig, int e, struct _Anvil_float *z0)
+{
+    xint_t X;
+    xint_t Y;
+    xint_t TEMP;
+    xint_t f;
+    
+    int k_offs = (1 << z0->exp_bits) - 1 + z0->mant_bits - 1;
+
+    int k = z0->exp;
+    if (k == 0)
     {
-        //return !estimate_s->neg?PFP_POS_ZERO:PFP_NEG_ZERO;
+        ++k;
     }
-    if (dd.bits == 0x7ff0000000000000ULL)
+    k -= k_offs;
+    
+    xint_init(f, 30);
+    xint_init(X, 30);
+    xint_init(Y, 30);
+    xint_init(TEMP, 30);
+
+    if (total_dig <= MAX_DIG)
     {
-        //return !estimate_s->neg?PFP_POS_INF:PFP_NEG_INF;
+        xint_assign_uint64(f, significand);
+    }
+    else
+    {
+        const char *str = pnum;
+        while ((*str >= '0' && *str <= '9') || *str == '.')
+        {
+            if (*str != '.')
+            {
+                xint_mul_1_add_1(f, f, 10, *str - '0');
+            }
+            ++str;
+        }
     }
     
-    return PFP_DEC;
+    if (z0->mant == 0 && z0->exp == 0)
+    {
+        next_float(z0);
+    }
+    
+    while (1)
+    {
+        uint64_t m = z0->mant;
+        int k = z0->exp;
+        
+        if (k == 0)
+        {
+            ++k;
+        }
+        k -= k_offs;
+
+        // Find x and y such that
+        // x / y = (f * 10^e) / (m * 2^k)
+        //       = f * 5^e * 2^e / m / 2^k
+        //       = f * 5^e * 2^(e-k)  / m
+        
+        // If e and/or e-k is negative we will move that term to the
+        // bottom of the ratio and negate it.
+        
+        xint_copy(X, f);
+        xint_assign_uint64(Y, m);
+
+        if (e > 0)
+        {
+            xint_mul_5exp(X, e);
+        }
+        else
+        {
+            xint_mul_5exp(Y, -e);
+        }
+        
+        if (e > k)
+        {
+            xint_lshift(X, X, e-k);
+        }
+        else
+        {
+            xint_lshift(Y, Y, k-e);
+        }
+
+        // E = m * (x-y) / y
+        // If E < 1/2
+        // y/2 < m * (x-y)
+        // y < 2 * m * (x-y)
+        //
+        // Let D = X - Y
+        int D_sign = xint_suba(TEMP, X, Y);
+        // Now TEMP is D
+
+        // D2 = 2 * m * abs(d)
+        xint_mul_2(TEMP, TEMP, 2 * m);
+        // Now TEMP is D2
+
+        // Compare D2 with y
+        int cmp_d2_y = xint_cmp(TEMP, Y);
+        
+        if (cmp_d2_y < 0)
+        {
+            xint_mul_1(TEMP, TEMP, 2);
+            int cmp_2d2_y = xint_cmp(TEMP, Y);
+            // D2 < y
+            if ((k != -1074) && (m == two_to_n_minus_1) && (D_sign < 0) && (cmp_2d2_y > 0))
+            {
+                if (prev_float(z0) == -1)
+                {
+                    break;
+                }
+            }
+            else
+            {
+                break;
+            }
+        }
+        else if (cmp_d2_y == 0)
+        {
+            // If m is even
+            if ((m % 2) == 0)
+            {
+                if ((m == two_to_n_minus_1) && (D_sign < 0))
+                {
+                    if (prev_float(z0) == -1)
+                    {
+                        break;
+                    }
+                }
+                else
+                {
+                    break;
+                }
+            }
+            else
+            {
+                if (D_sign < 0)
+                {
+                    prev_float(z0);
+                    break;
+                }
+                if (D_sign > 0)
+                {
+                    next_float(z0);
+                    break;
+                }
+            }
+        }
+        else
+        {
+            if (D_sign < 0)
+            {
+                if (prev_float(z0) == -1)
+                {
+                    break;
+                }
+            }
+            if (D_sign > 0)
+            {
+                if (next_float(z0) == -1)
+                {
+                    break;
+                }
+            }
+        }
+    }
+    
+    xint_delete(f);
+    xint_delete(X);
+    xint_delete(Y);
+    xint_delete(TEMP);
+
+    return 0;
+}
+
+int prev_float(struct _Anvil_float *z)
+{
+    if (z->exp == 0)
+    {
+        // Sub-normal
+        if (z->mant)
+        {
+            --z->mant;
+        }
+        if (z->mant == 0)
+        {
+            return -1;
+        }
+    }
+    else if (z->exp == 0x7ff)
+    {
+        // NaN
+        z->mant = (1ULL << z->mant_bits) - 1;
+        z->exp = 0x7fe;
+    }
+    else
+    {
+        if (z->mant == 1ULL << 52)
+        {
+            if (z->exp == 1)
+            {
+                z->mant = (1ULL << 52) - 1;
+                z->exp = 0;
+            }
+            else
+            {
+                z->mant = (1ULL << z->mant_bits) - 1;
+                --z->exp;
+            }
+        }
+        else
+        {
+            --z->mant;
+        }
+    }
+    return 0;
+}
+
+int next_float(struct _Anvil_float *z)
+{
+    if (z->exp == 0)
+    {
+        // Sub-normal
+        if (z->mant < (1ULL << (z->mant_bits - 1)) - 1)
+        {
+            ++z->mant;
+        }
+        else
+        {
+            z->exp = 1;
+            z->mant = 1ULL << (z->mant_bits - 1);
+        }
+    }
+    else if (z->exp == 0x7ff)
+    {
+        // NaN
+        return -1;
+    }
+    else
+    {
+        ++z->mant;
+        if (z->mant == 1ULL << z->mant_bits)
+        {
+            z->mant = 1ULL << (z->mant_bits - 1);
+            ++z->exp;
+        }
+    }
+    return 0;
 }
