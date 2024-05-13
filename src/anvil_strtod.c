@@ -556,11 +556,11 @@ int prev_float(struct _Anvil_float *z)
     }
     else
     {
-        if (z->mant == 1ULL << 52)
+        if (z->mant == 1ULL << (z->mant_bits - 1))
         {
             if (z->exp == 1)
             {
-                z->mant = (1ULL << 52) - 1;
+                --z->mant;
                 z->exp = 0;
             }
             else
@@ -582,14 +582,10 @@ int next_float(struct _Anvil_float *z)
     if (z->exp == 0)
     {
         // Sub-normal
-        if (z->mant < (1ULL << (z->mant_bits - 1)) - 1)
-        {
-            ++z->mant;
-        }
-        else
+        ++z->mant;
+        if (z->mant == (1ULL << (z->mant_bits - 1)))
         {
             z->exp = 1;
-            z->mant = 1ULL << (z->mant_bits - 1);
         }
     }
     else if (z->exp == 0x7ff)
@@ -602,7 +598,7 @@ int next_float(struct _Anvil_float *z)
         ++z->mant;
         if (z->mant == 1ULL << z->mant_bits)
         {
-            z->mant = 1ULL << (z->mant_bits - 1);
+            z->mant >>= 1;
             ++z->exp;
         }
     }
