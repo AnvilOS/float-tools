@@ -534,6 +534,10 @@ int algoritm_r(uint64_t significand, const char *pnum, int total_dig, int e, str
     return 0;
 }
 
+#define MIN_MANT (1ULL << (z->mant_bits - 1))
+#define MAX_MANT ((1ULL << z->mant_bits) - 1)
+#define MAX_SUB_MANT (MIN_MANT - 1)
+
 int prev_float(struct _Anvil_float *z)
 {
     if (z->exp == 0)
@@ -550,28 +554,20 @@ int prev_float(struct _Anvil_float *z)
     }
     else if (z->exp == 0x7ff)
     {
-        // NaN
-        z->mant = (1ULL << z->mant_bits) - 1;
+        // Inf
+        z->mant = MAX_MANT;
         z->exp = 0x7fe;
     }
     else
     {
-        if (z->mant == 1ULL << (z->mant_bits - 1))
+        --z->mant;
+        if (z->mant < MIN_MANT)
         {
-            if (z->exp == 1)
+            --z->exp;
+            if (z->exp > 0)
             {
-                --z->mant;
-                z->exp = 0;
+                z->mant = (z->mant << 1) + 1;
             }
-            else
-            {
-                z->mant = (1ULL << z->mant_bits) - 1;
-                --z->exp;
-            }
-        }
-        else
-        {
-            --z->mant;
         }
     }
     return 0;
@@ -579,24 +575,25 @@ int prev_float(struct _Anvil_float *z)
 
 int next_float(struct _Anvil_float *z)
 {
+    if (z->exp == 0x7ff)
+    {
+        // Inf
+        return -1;
+    }
+    
+    ++z->mant;
+
     if (z->exp == 0)
     {
         // Sub-normal
-        ++z->mant;
-        if (z->mant == (1ULL << (z->mant_bits - 1)))
+        if (z->mant > MAX_SUB_MANT)
         {
-            z->exp = 1;
+            ++z->exp;
         }
-    }
-    else if (z->exp == 0x7ff)
-    {
-        // NaN
-        return -1;
     }
     else
     {
-        ++z->mant;
-        if (z->mant == 1ULL << z->mant_bits)
+        if (z->mant > MAX_MANT)
         {
             z->mant >>= 1;
             ++z->exp;
